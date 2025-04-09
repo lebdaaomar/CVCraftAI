@@ -47,12 +47,12 @@ Make sure all the following files are properly committed to your GitHub reposito
 
 ## How This Deployment Works
 
-The updated configuration makes several adjustments for Vercel:
+The updated configuration uses a simplified approach with Vercel:
 
-1. **Modified `vercel.json`**:
-   - Specifies the build command and output directory
-   - Configures route handling for both API calls and frontend pages
-   - Allocates adequate memory and execution time for PDF generation
+1. **Simplified `vercel.json`**:
+   - Uses a single build setup with the standalone server.js file
+   - Routes all requests through server.js which handles both the API and serving the frontend
+   - Eliminates the need for complex route configuration or separate frontend builds
 
 2. **PDF Generation Adaptation**:
    - For Vercel: PDFs are generated in the `/tmp` directory and sent directly in the response
@@ -66,17 +66,22 @@ The updated configuration makes several adjustments for Vercel:
 
 If you encounter issues with your Vercel deployment:
 
-1. **Build Errors**:
+1. **If You See Code Instead of the Application**:
+   - This means your vercel.json file isn't correctly routing requests
+   - Make sure the vercel.json file is exactly as shown above
+   - Try a fresh deployment after updating the file
+
+2. **Build Errors**:
    - Check the build logs in Vercel dashboard
    - Verify your `vercel.json` is correctly formatted
 
-2. **PDF Generation Issues**:
+3. **PDF Generation Issues**:
    - If PDFs aren't generating, check if your OpenAI API key has sufficient quota
    - Verify in network tab that PDF requests are being processed correctly
 
-3. **Other Issues**:
+4. **Other Issues**:
    - Try clearing Vercel's build cache and redeploying
-   - Make sure your `/api` routes are correctly formatted
+   - Make sure your server.js file is correctly handling all routes
 
 ## Need Further Assistance?
 
