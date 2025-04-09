@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "build": "vite build",
-    "vercel-build": "cp -r dist public && cd public && cp index.html 200.html && cp index.html 404.html"
+    "vercel-build": "rm -rf public && mkdir -p public && cp -r dist/* public/ && cd public && cp index.html 200.html && cp index.html 404.html"
   },
   "engines": {
     "node": "18.x"
