@@ -42,11 +42,22 @@ export async function getConversationMessages(sessionId: string) {
 
 export async function generatePdf(sessionId: string) {
   try {
-    const response = await apiRequest("POST", "/api/cv/generate-pdf", {
+    const response = await apiRequest("POST", "/api/generate-pdf", {
       sessionId
     });
     
-    return await response.json();
+    // Check if the response is JSON (local development) or PDF (Vercel)
+    const contentType = response.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/pdf')) {
+      // Vercel response - direct PDF file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      return { success: true, pdfUrl: url };
+    } else {
+      // Local development response - JSON with URL
+      return await response.json();
+    }
   } catch (error) {
     console.error("Error generating PDF:", error);
     throw error;

@@ -8,6 +8,7 @@ import Footer from "@/components/Footer";
 import Notification from "@/components/Notification";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { generatePdf } from "@/lib/openai";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CVData } from "@shared/schema";
 
@@ -49,7 +50,11 @@ export default function Home() {
   }, []);
 
   // Get session data
-  const { data: sessionData, refetch: refetchSession } = useQuery({
+  const { data: sessionData, refetch: refetchSession } = useQuery<{
+    status?: string;
+    cvData?: CVData;
+    completed?: boolean;
+  }>({
     queryKey: ["/api/session", sessionId],
     enabled: !!sessionId && conversationStarted,
   });
@@ -83,10 +88,8 @@ export default function Home() {
   // Generate PDF mutation
   const generatePdfMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/cv/generate-pdf", {
-        sessionId,
-      });
-      return response.json();
+      // Use the updated openai helper function that handles both local and Vercel deployments
+      return await generatePdf(sessionId);
     },
     onSuccess: (data) => {
       setPdfUrl(data.pdfUrl);
@@ -106,7 +109,7 @@ export default function Home() {
 
   // Update progress based on session status
   useEffect(() => {
-    if (sessionData) {
+    if (sessionData?.status) {
       if (sessionData.status === "collecting_profession") {
         setProgress(15);
       } else if (sessionData.status === "selecting_sections") {
@@ -115,16 +118,20 @@ export default function Home() {
         setProgress(60);
       } else if (sessionData.status === "review") {
         setProgress(85);
-        setCvData(sessionData.cvData);
+        if (sessionData.cvData && typeof sessionData.cvData === 'object') {
+          setCvData(sessionData.cvData as CVData);
+        }
       } else if (sessionData.status === "completed") {
         setProgress(100);
-        setCvData(sessionData.cvData);
+        if (sessionData.cvData && typeof sessionData.cvData === 'object') {
+          setCvData(sessionData.cvData as CVData);
+        }
         if (!pdfUrl) {
           generatePdfMutation.mutate();
         }
       }
     }
-  }, [sessionData]);
+  }, [sessionData, pdfUrl, generatePdfMutation]);
 
   const handleApiKeySubmit = (key: string) => {
     setApiKey(key);

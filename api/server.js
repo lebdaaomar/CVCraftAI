@@ -5,13 +5,19 @@ const fs = require('fs');
 
 // Create Express app
 const app = express();
-const server = createServer(app);
 app.use(express.json());
 
-// Directory for uploads
-const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+// Directory for uploads - adapt for Vercel environment
+let uploadsDir;
+if (process.env.VERCEL) {
+  // In Vercel, use the /tmp directory which is writable
+  uploadsDir = '/tmp';
+} else {
+  // Local development
+  uploadsDir = path.join(__dirname, '../uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
 }
 
 // In-memory storage
@@ -501,8 +507,21 @@ app.post('/api/generate-pdf', async (req, res) => {
     
     await generateCVPdf(session.cvData, outputPath);
     
-    const pdfUrl = `/uploads/${filename}`;
-    res.json({ success: true, pdfUrl });
+    // For Vercel deployments, we need to send the file directly
+    if (process.env.VERCEL) {
+      // Instead of returning a URL, return the file directly
+      const data = fs.readFileSync(outputPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(data);
+      
+      // Clean up the file after sending (for Vercel's ephemeral filesystem)
+      fs.unlinkSync(outputPath);
+    } else {
+      // Local development - return URL as before
+      const pdfUrl = `/uploads/${filename}`;
+      res.json({ success: true, pdfUrl });
+    }
   } catch (error) {
     console.error('Error generating PDF:', error);
     res.status(500).json({ error: 'Failed to generate PDF' });
