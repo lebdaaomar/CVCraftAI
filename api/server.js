@@ -379,6 +379,22 @@ async function generateCVPdf(cvData, outputPath) {
 }
 
 // API Routes
+// Add a root API route for health check
+app.get('/api', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'CV Generator API is running',
+    version: '1.0.0',
+    endpoints: [
+      '/api/session',
+      '/api/conversation/start',
+      '/api/conversation/message',
+      '/api/session/:sessionId/messages',
+      '/api/generate-pdf'
+    ]
+  });
+});
+
 app.post('/api/session', async (req, res) => {
   try {
     const sessionId = await storage.createSession({});
@@ -529,28 +545,336 @@ app.post('/api/generate-pdf', async (req, res) => {
 });
 
 // Serve static files from dist for the frontend (or from public for Vercel)
-const staticPath = process.env.VERCEL 
-  ? path.join(__dirname, '../public') 
-  : path.join(__dirname, '../dist');
-app.use(express.static(staticPath));
+try {
+  const staticPath = process.env.VERCEL 
+    ? path.join(__dirname, '../public') 
+    : path.join(__dirname, '../dist');
+  
+  // Check if the path exists before trying to serve from it
+  if (fs.existsSync(staticPath)) {
+    app.use(express.static(staticPath));
+    console.log(`Serving static files from: ${staticPath}`);
+  } else {
+    console.warn(`Static path not found: ${staticPath}`);
+  }
+} catch (err) {
+  console.error('Error setting up static file serving:', err);
+}
 
 // Serve uploads - adapt for Vercel environment
 if (!process.env.VERCEL) {
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 }
 
-// For any other routes, serve the index.html file
+// For any other routes, serve the index.html file or fallback to API message
 app.get('*', (req, res) => {
-  const indexPath = process.env.VERCEL 
-    ? path.join(__dirname, '../public/index.html')
-    : path.join(__dirname, '../dist/index.html');
-  res.sendFile(indexPath);
+  try {
+    // In Vercel environment, respond with a simple homepage if static files aren't available
+    if (process.env.VERCEL) {
+      // Check if this is a request for the root path
+      if (req.path === '/') {
+        const indexPath = path.join(__dirname, '../public/index.html');
+        // Try to send the index.html file
+        if (fs.existsSync(indexPath)) {
+          return res.sendFile(indexPath);
+        } else {
+          // Fallback to a simple HTML response
+          return res.send(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>CV Generator</title>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                  h1 { color: #333; }
+                  .container { margin-top: 30px; }
+                  .api-key { margin: 20px 0; }
+                  input { padding: 10px; width: 100%; max-width: 400px; }
+                  button { margin-top: 10px; padding: 10px 20px; background: #4a90e2; color: white; border: none; cursor: pointer; }
+                </style>
+              </head>
+              <body>
+                <h1>CV Generator</h1>
+                <p>Welcome to the CV Generator application. This app uses OpenAI's API to help you create a professional CV.</p>
+                <div class="container">
+                  <div class="api-key">
+                    <h2>Enter your OpenAI API Key</h2>
+                    <p>This application requires your OpenAI API key to function.</p>
+                    <input type="text" id="apiKey" placeholder="sk-..." />
+                    <button onclick="startApp()">Start CV Generator</button>
+                  </div>
+                  <div id="status"></div>
+                </div>
+                <script>
+                  async function startApp() {
+                    const apiKey = document.getElementById('apiKey').value.trim();
+                    if (!apiKey) {
+                      document.getElementById('status').innerHTML = '<p style="color: red;">Please enter a valid API key.</p>';
+                      return;
+                    }
+                    
+                    document.getElementById('status').innerHTML = '<p>Starting session...</p>';
+                    
+                    try {
+                      // Create a new session
+                      const sessionRes = await fetch('/api/session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                      });
+                      
+                      if (!sessionRes.ok) throw new Error('Failed to create session');
+                      
+                      const { sessionId } = await sessionRes.json();
+                      
+                      // Start the conversation
+                      const startRes = await fetch('/api/conversation/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId, apiKey })
+                      });
+                      
+                      if (!startRes.ok) throw new Error('Failed to start conversation');
+                      
+                      document.getElementById('status').innerHTML = '<p style="color: green;">Session started! The chat interface will appear momentarily...</p>';
+                      
+                      // Start a simple chat interface
+                      document.querySelector('.container').innerHTML = '<div id="chat"><h2>CV Generator Chat</h2><div id="messages"></div><div class="input-area"><input type="text" id="userMessage" placeholder="Type your message..." /><button onclick="sendMessage()">Send</button></div></div>';
+                      
+                      // Get initial message
+                      getMessages(sessionId);
+                      
+                      // Store session ID and API key for later use
+                      window.sessionId = sessionId;
+                      window.apiKey = apiKey;
+                    } catch (error) {
+                      document.getElementById('status').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+                    }
+                  }
+                  
+                  async function sendMessage() {
+                    const message = document.getElementById('userMessage').value.trim();
+                    if (!message) return;
+                    
+                    document.getElementById('userMessage').value = '';
+                    
+                    const messagesDiv = document.getElementById('messages');
+                    messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + message + '</div></div>';
+                    
+                    try {
+                      const res = await fetch('/api/conversation/message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          sessionId: window.sessionId, 
+                          apiKey: window.apiKey, 
+                          message 
+                        })
+                      });
+                      
+                      if (!res.ok) throw new Error('Failed to send message');
+                      
+                      const data = await res.json();
+                      getMessages(window.sessionId);
+                    } catch (error) {
+                      messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #ffebee; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">Error: ' + error.message + '</div></div>';
+                    }
+                  }
+                  
+                  async function getMessages(sessionId) {
+                    try {
+                      const res = await fetch('/api/session/' + sessionId + '/messages');
+                      if (!res.ok) throw new Error('Failed to get messages');
+                      
+                      const data = await res.json();
+                      const messagesDiv = document.getElementById('messages');
+                      messagesDiv.innerHTML = '';
+                      
+                      data.messages.forEach(msg => {
+                        if (msg.role === 'user') {
+                          messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                        } else {
+                          messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #f1f1f1; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                        }
+                      });
+                      
+                      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    } catch (error) {
+                      console.error('Error getting messages:', error);
+                    }
+                  }
+                </script>
+              </body>
+            </html>
+          `);
+        }
+      }
+    }
+    
+    // Standard behavior for other environments or paths
+    const indexPath = process.env.VERCEL 
+      ? path.join(__dirname, '../public/index.html')
+      : path.join(__dirname, '../dist/index.html');
+    
+    res.sendFile(indexPath);
+  } catch (err) {
+    console.error('Error serving static content:', err);
+    res.status(500).json({ error: 'Failed to serve content', details: err.message });
+  }
 });
 
 // Handle errors
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  console.error('Server error:', err);
+  
+  // Check if this is an API route
+  if (req.path.startsWith('/api/')) {
+    return res.status(500).json({ 
+      error: 'Something went wrong!', 
+      details: process.env.NODE_ENV === 'production' ? 'See server logs for details' : err.message,
+      path: req.path
+    });
+  }
+  
+  // For non-API routes in a Vercel environment, serve the fallback interface
+  if (process.env.VERCEL) {
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>CV Generator - Error Recovery</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #e53e3e; }
+            .container { margin-top: 30px; }
+            .error-box { background: #fff5f5; border: 1px solid #fed7d7; padding: 15px; border-radius: 5px; }
+            .api-key { margin: 20px 0; }
+            input { padding: 10px; width: 100%; max-width: 400px; }
+            button { margin-top: 10px; padding: 10px 20px; background: #4a90e2; color: white; border: none; cursor: pointer; }
+          </style>
+        </head>
+        <body>
+          <h1>CV Generator - Error Recovery Mode</h1>
+          <div class="error-box">
+            <p>We encountered an error loading the application. This fallback interface will allow you to use the CV Generator.</p>
+          </div>
+          <div class="container">
+            <div class="api-key">
+              <h2>Enter your OpenAI API Key</h2>
+              <p>This application requires your OpenAI API key to function.</p>
+              <input type="text" id="apiKey" placeholder="sk-..." />
+              <button onclick="startApp()">Start CV Generator</button>
+            </div>
+            <div id="status"></div>
+          </div>
+          <script>
+            async function startApp() {
+              const apiKey = document.getElementById('apiKey').value.trim();
+              if (!apiKey) {
+                document.getElementById('status').innerHTML = '<p style="color: red;">Please enter a valid API key.</p>';
+                return;
+              }
+              
+              document.getElementById('status').innerHTML = '<p>Starting session...</p>';
+              
+              try {
+                // Create a new session
+                const sessionRes = await fetch('/api/session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!sessionRes.ok) throw new Error('Failed to create session');
+                
+                const { sessionId } = await sessionRes.json();
+                
+                // Start the conversation
+                const startRes = await fetch('/api/conversation/start', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sessionId, apiKey })
+                });
+                
+                if (!startRes.ok) throw new Error('Failed to start conversation');
+                
+                document.getElementById('status').innerHTML = '<p style="color: green;">Session started! The chat interface will appear momentarily...</p>';
+                
+                // Start a simple chat interface
+                document.querySelector('.container').innerHTML = '<div id="chat"><h2>CV Generator Chat</h2><div id="messages"></div><div class="input-area"><input type="text" id="userMessage" placeholder="Type your message..." /><button onclick="sendMessage()">Send</button></div></div>';
+                
+                // Get initial message
+                getMessages(sessionId);
+                
+                // Store session ID and API key for later use
+                window.sessionId = sessionId;
+                window.apiKey = apiKey;
+              } catch (error) {
+                document.getElementById('status').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+              }
+            }
+            
+            async function sendMessage() {
+              const message = document.getElementById('userMessage').value.trim();
+              if (!message) return;
+              
+              document.getElementById('userMessage').value = '';
+              
+              const messagesDiv = document.getElementById('messages');
+              messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + message + '</div></div>';
+              
+              try {
+                const res = await fetch('/api/conversation/message', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    sessionId: window.sessionId, 
+                    apiKey: window.apiKey, 
+                    message 
+                  })
+                });
+                
+                if (!res.ok) throw new Error('Failed to send message');
+                
+                const data = await res.json();
+                getMessages(window.sessionId);
+              } catch (error) {
+                messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #ffebee; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">Error: ' + error.message + '</div></div>';
+              }
+            }
+            
+            async function getMessages(sessionId) {
+              try {
+                const res = await fetch('/api/session/' + sessionId + '/messages');
+                if (!res.ok) throw new Error('Failed to get messages');
+                
+                const data = await res.json();
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                
+                data.messages.forEach(msg => {
+                  if (msg.role === 'user') {
+                    messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                  } else {
+                    messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #f1f1f1; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                  }
+                });
+                
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+              } catch (error) {
+                console.error('Error getting messages:', error);
+              }
+            }
+          </script>
+        </body>
+      </html>
+    `);
+  }
+  
+  // Standard error handling for other environments
+  res.status(500).send('Server Error. Please try again later.');
 });
 
 // Start the server when not running on Vercel

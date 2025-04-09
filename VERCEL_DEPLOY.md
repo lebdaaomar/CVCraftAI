@@ -66,22 +66,41 @@ The updated configuration uses a simplified approach with Vercel:
 
 If you encounter issues with your Vercel deployment:
 
-1. **If You See Code Instead of the Application**:
+1. **If You See "Something went wrong!" Error**:
+   - This is likely an issue with the static file serving
+   - The application now includes a fallback HTML interface that will work even if the build process fails
+   - Make sure you're using the latest server.js file which includes this fallback
+
+2. **If You See Code Instead of the Application**:
    - This means your vercel.json file isn't correctly routing requests
-   - Make sure the vercel.json file is exactly as shown above
-   - Try a fresh deployment after updating the file
+   - Use the simplified vercel.json configuration where all routes go to server.js:
+   ```json
+   {
+     "version": 2,
+     "builds": [
+       { "src": "api/server.js", "use": "@vercel/node" }
+     ],
+     "routes": [
+       { "src": "/(.*)", "dest": "/api/server.js" }
+     ]
+   }
+   ```
+   - Deploy again after updating the file
 
-2. **Build Errors**:
+3. **Build Errors**:
    - Check the build logs in Vercel dashboard
-   - Verify your `vercel.json` is correctly formatted
+   - Try setting the Environment Variable `NODE_ENV=production` in your Vercel project settings
+   - Make sure your Node.js version is set to 18.x in the Vercel settings
 
-3. **PDF Generation Issues**:
+4. **PDF Generation Issues**:
    - If PDFs aren't generating, check if your OpenAI API key has sufficient quota
-   - Verify in network tab that PDF requests are being processed correctly
+   - Make sure the tmp directory is writable (it should be in Vercel)
+   - Verify that the API requests are completing successfully in the network tab
 
-4. **Other Issues**:
+5. **Other Issues**:
    - Try clearing Vercel's build cache and redeploying
-   - Make sure your server.js file is correctly handling all routes
+   - Use the "Reset Cache and Deploy" option in the Vercel dashboard
+   - Check the Vercel Function Logs for detailed error messages
 
 ## Need Further Assistance?
 
