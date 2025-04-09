@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import { CVData } from "@shared/schema";
+import { useEffect } from "react";
 
 interface CVPreviewProps {
   cvData: CVData;
@@ -17,6 +18,13 @@ export default function CVPreview({
   onGeneratePdf 
 }: CVPreviewProps) {
   const { personalInfo, sections } = cvData;
+
+  // Automatically generate PDF if not generated yet
+  useEffect(() => {
+    if (!pdfUrl && !isGenerating) {
+      onGeneratePdf();
+    }
+  }, [pdfUrl, isGenerating, onGeneratePdf]);
 
   const handleDownload = () => {
     if (pdfUrl) {
@@ -34,7 +42,7 @@ export default function CVPreview({
           <Button 
             onClick={handleDownload}
             disabled={isGenerating && !pdfUrl}
-            className="w-full sm:w-auto px-4 py-2 bg-secondary hover:bg-green-600 text-white rounded-md font-medium transition-all flex items-center justify-center shadow-sm"
+            className="w-full sm:w-auto px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all flex items-center justify-center shadow-md"
             variant="default"
             size="lg"
           >
