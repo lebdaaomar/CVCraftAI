@@ -587,12 +587,122 @@ app.get('*', (req, res) => {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-                  h1 { color: #333; }
-                  .container { margin-top: 30px; }
-                  .api-key { margin: 20px 0; }
-                  input { padding: 10px; width: 100%; max-width: 400px; }
-                  button { margin-top: 10px; padding: 10px 20px; background: #4a90e2; color: white; border: none; cursor: pointer; }
+                  body { 
+                    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+                    max-width: 800px; 
+                    margin: 0 auto; 
+                    padding: 20px;
+                    line-height: 1.5;
+                    color: #333;
+                  }
+                  h1 { 
+                    color: #333; 
+                    margin-bottom: 10px;
+                  }
+                  h2 {
+                    margin-top: 0;
+                    padding-bottom: 10px;
+                    border-bottom: 1px solid #eaeaea;
+                  }
+                  .container { 
+                    margin-top: 30px; 
+                  }
+                  .api-key { 
+                    margin: 20px 0; 
+                    padding: 20px;
+                    background: #f8f9fa;
+                    border-radius: 10px;
+                  }
+                  input { 
+                    padding: 12px 16px; 
+                    width: 100%; 
+                    max-width: 400px;
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                    font-size: 16px;
+                    transition: border-color 0.2s ease;
+                  }
+                  input:focus {
+                    outline: none;
+                    border-color: #4a90e2;
+                    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+                  }
+                  button { 
+                    margin-top: 10px; 
+                    padding: 12px 24px; 
+                    background: #4a90e2; 
+                    color: white; 
+                    border: none; 
+                    border-radius: 6px;
+                    font-size: 16px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: background-color 0.2s ease;
+                  }
+                  button:hover {
+                    background: #3a80d2;
+                  }
+                  button:active {
+                    background: #2a70c2;
+                  }
+                  
+                  /* Chat specific styles */
+                  #chat {
+                    display: flex;
+                    flex-direction: column;
+                    height: calc(100vh - 150px);
+                    min-height: 400px;
+                  }
+                  #messages {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 20px;
+                    background: #f8f9fa;
+                    border-radius: 10px 10px 0 0;
+                    margin-bottom: 0;
+                  }
+                  .message {
+                    margin: 10px 0;
+                    max-width: 80%;
+                    word-wrap: break-word;
+                  }
+                  .user-message {
+                    margin-left: auto;
+                    background: #e3f2fd;
+                    padding: 12px 16px;
+                    border-radius: 18px 18px 4px 18px;
+                    color: #0d47a1;
+                    align-self: flex-end;
+                    text-align: left;
+                  }
+                  .assistant-message {
+                    background: #f1f1f1;
+                    padding: 12px 16px;
+                    border-radius: 18px 18px 18px 4px;
+                    color: #424242;
+                    align-self: flex-start;
+                  }
+                  .input-area {
+                    display: flex;
+                    padding: 15px;
+                    background: #fff;
+                    border: 1px solid #eaeaea;
+                    border-radius: 0 0 10px 10px;
+                  }
+                  .input-area input {
+                    flex: 1;
+                    margin-right: 10px;
+                    padding: 12px 16px;
+                    border: 1px solid #ddd;
+                    border-radius: 30px;
+                  }
+                  .input-area button {
+                    margin-top: 0;
+                    border-radius: 30px;
+                    padding: 8px 20px;
+                    background: #4a90e2;
+                    font-weight: 500;
+                  }
                 </style>
               </head>
               <body>
@@ -640,7 +750,25 @@ app.get('*', (req, res) => {
                       document.getElementById('status').innerHTML = '<p style="color: green;">Session started! The chat interface will appear momentarily...</p>';
                       
                       // Start a simple chat interface
-                      document.querySelector('.container').innerHTML = '<div id="chat"><h2>CV Generator Chat</h2><div id="messages"></div><div class="input-area"><input type="text" id="userMessage" placeholder="Type your message..." /><button onclick="sendMessage()">Send</button></div></div>';
+                      document.querySelector('.container').innerHTML = `
+                        <div id="chat">
+                          <h2>CV Generator Chat</h2>
+                          <div id="messages"></div>
+                          <div class="input-area">
+                            <input type="text" id="userMessage" placeholder="Type your message..." />
+                            <button id="sendButton">Send</button>
+                          </div>
+                        </div>
+                      `;
+                      
+                      // Set up event listeners for sending messages
+                      document.getElementById('sendButton').addEventListener('click', sendMessage);
+                      document.getElementById('userMessage').addEventListener('keydown', function(event) {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          sendMessage();
+                        }
+                      });
                       
                       // Store session ID and API key for later use
                       window.sessionId = sessionId;
@@ -682,7 +810,7 @@ app.get('*', (req, res) => {
                     document.getElementById('userMessage').value = '';
                     
                     const messagesDiv = document.getElementById('messages');
-                    messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + message + '</div></div>';
+                    messagesDiv.innerHTML += '<div class="message user-message">' + message + '</div>';
                     
                     try {
                       const res = await fetch('/api/conversation/message', {
@@ -700,7 +828,7 @@ app.get('*', (req, res) => {
                       const data = await res.json();
                       getMessages(window.sessionId);
                     } catch (error) {
-                      messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #ffebee; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">Error: ' + error.message + '</div></div>';
+                      messagesDiv.innerHTML += '<div class="message assistant-message" style="color: #d32f2f;">Error: ' + error.message + '</div>';
                     }
                   }
                   
@@ -715,9 +843,9 @@ app.get('*', (req, res) => {
                       
                       data.messages.forEach(msg => {
                         if (msg.role === 'user') {
-                          messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                          messagesDiv.innerHTML += '<div class="message user-message">' + msg.content + '</div>';
                         } else {
-                          messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #f1f1f1; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                          messagesDiv.innerHTML += '<div class="message assistant-message">' + msg.content + '</div>';
                         }
                       });
                       
@@ -769,13 +897,129 @@ app.use((err, req, res, next) => {
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            h1 { color: #e53e3e; }
-            .container { margin-top: 30px; }
-            .error-box { background: #fff5f5; border: 1px solid #fed7d7; padding: 15px; border-radius: 5px; }
-            .api-key { margin: 20px 0; }
-            input { padding: 10px; width: 100%; max-width: 400px; }
-            button { margin-top: 10px; padding: 10px 20px; background: #4a90e2; color: white; border: none; cursor: pointer; }
+            body { 
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+              max-width: 800px; 
+              margin: 0 auto; 
+              padding: 20px;
+              line-height: 1.5;
+              color: #333;
+            }
+            h1 { 
+              color: #e53e3e; 
+              margin-bottom: 10px;
+            }
+            h2 {
+              margin-top: 0;
+              padding-bottom: 10px;
+              border-bottom: 1px solid #eaeaea;
+            }
+            .container { 
+              margin-top: 30px; 
+            }
+            .error-box { 
+              background: #fff5f5; 
+              border: 1px solid #fed7d7; 
+              padding: 18px;
+              border-radius: 10px;
+              margin-bottom: 20px;
+            }
+            .api-key { 
+              margin: 20px 0; 
+              padding: 20px;
+              background: #f8f9fa;
+              border-radius: 10px;
+            }
+            input { 
+              padding: 12px 16px; 
+              width: 100%; 
+              max-width: 400px;
+              border: 1px solid #ddd;
+              border-radius: 6px;
+              font-size: 16px;
+              transition: border-color 0.2s ease;
+            }
+            input:focus {
+              outline: none;
+              border-color: #4a90e2;
+              box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+            }
+            button { 
+              margin-top: 10px; 
+              padding: 12px 24px; 
+              background: #4a90e2; 
+              color: white; 
+              border: none; 
+              border-radius: 6px;
+              font-size: 16px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: background-color 0.2s ease;
+            }
+            button:hover {
+              background: #3a80d2;
+            }
+            button:active {
+              background: #2a70c2;
+            }
+            
+            /* Chat specific styles */
+            #chat {
+              display: flex;
+              flex-direction: column;
+              height: calc(100vh - 150px);
+              min-height: 400px;
+            }
+            #messages {
+              flex: 1;
+              overflow-y: auto;
+              padding: 20px;
+              background: #f8f9fa;
+              border-radius: 10px 10px 0 0;
+              margin-bottom: 0;
+            }
+            .message {
+              margin: 10px 0;
+              max-width: 80%;
+              word-wrap: break-word;
+            }
+            .user-message {
+              margin-left: auto;
+              background: #e3f2fd;
+              padding: 12px 16px;
+              border-radius: 18px 18px 4px 18px;
+              color: #0d47a1;
+              align-self: flex-end;
+              text-align: left;
+            }
+            .assistant-message {
+              background: #f1f1f1;
+              padding: 12px 16px;
+              border-radius: 18px 18px 18px 4px;
+              color: #424242;
+              align-self: flex-start;
+            }
+            .input-area {
+              display: flex;
+              padding: 15px;
+              background: #fff;
+              border: 1px solid #eaeaea;
+              border-radius: 0 0 10px 10px;
+            }
+            .input-area input {
+              flex: 1;
+              margin-right: 10px;
+              padding: 12px 16px;
+              border: 1px solid #ddd;
+              border-radius: 30px;
+            }
+            .input-area button {
+              margin-top: 0;
+              border-radius: 30px;
+              padding: 8px 20px;
+              background: #4a90e2;
+              font-weight: 500;
+            }
           </style>
         </head>
         <body>
@@ -825,7 +1069,25 @@ app.use((err, req, res, next) => {
                 document.getElementById('status').innerHTML = '<p style="color: green;">Session started! The chat interface will appear momentarily...</p>';
                 
                 // Start a simple chat interface
-                document.querySelector('.container').innerHTML = '<div id="chat"><h2>CV Generator Chat</h2><div id="messages"></div><div class="input-area"><input type="text" id="userMessage" placeholder="Type your message..." /><button onclick="sendMessage()">Send</button></div></div>';
+                document.querySelector('.container').innerHTML = `
+                  <div id="chat">
+                    <h2>CV Generator Chat</h2>
+                    <div id="messages"></div>
+                    <div class="input-area">
+                      <input type="text" id="userMessage" placeholder="Type your message..." />
+                      <button id="sendButton">Send</button>
+                    </div>
+                  </div>
+                `;
+                
+                // Set up event listeners for sending messages
+                document.getElementById('sendButton').addEventListener('click', sendMessage);
+                document.getElementById('userMessage').addEventListener('keydown', function(event) {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    sendMessage();
+                  }
+                });
                 
                 // Store session ID and API key for later use
                 window.sessionId = sessionId;
@@ -867,7 +1129,7 @@ app.use((err, req, res, next) => {
               document.getElementById('userMessage').value = '';
               
               const messagesDiv = document.getElementById('messages');
-              messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + message + '</div></div>';
+              messagesDiv.innerHTML += '<div class="message user-message">' + message + '</div>';
               
               try {
                 const res = await fetch('/api/conversation/message', {
@@ -885,7 +1147,7 @@ app.use((err, req, res, next) => {
                 const data = await res.json();
                 getMessages(window.sessionId);
               } catch (error) {
-                messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #ffebee; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">Error: ' + error.message + '</div></div>';
+                messagesDiv.innerHTML += '<div class="message assistant-message" style="color: #d32f2f;">Error: ' + error.message + '</div>';
               }
             }
             
@@ -900,9 +1162,9 @@ app.use((err, req, res, next) => {
                 
                 data.messages.forEach(msg => {
                   if (msg.role === 'user') {
-                    messagesDiv.innerHTML += '<div style="text-align: right; margin: 10px 0;"><div style="background: #e1f5fe; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                    messagesDiv.innerHTML += '<div class="message user-message">' + msg.content + '</div>';
                   } else {
-                    messagesDiv.innerHTML += '<div style="margin: 10px 0;"><div style="background: #f1f1f1; padding: 10px; border-radius: 10px; display: inline-block; max-width: 80%;">' + msg.content + '</div></div>';
+                    messagesDiv.innerHTML += '<div class="message assistant-message">' + msg.content + '</div>';
                   }
                 });
                 
