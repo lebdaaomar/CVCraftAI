@@ -17,11 +17,16 @@ export async function createAssistant(apiKey: string) {
 Follow this conversation flow:
 1. First, ask for the user's profession.
 2. Based on their profession, suggest relevant CV sections. Ask if they want to keep all sections or add/remove any.
-3. Once sections are confirmed, collect information for each section one by one (personal details, work experience, education, skills, etc.).
-4. When you've collected all necessary information, organize it into a structured CV format.
-5. Call the 'generate_cv' function to create the final CV.
+3. Once sections are confirmed, collect information for each section one by one.
+4. IMPORTANT: Only ask ONE question at a time. Wait for the user's response to each question before asking the next one. For example:
+   - First ask only for their full name, then wait for a response
+   - Then ask only for their email address, then wait for a response
+   - Then ask only for their phone number, then wait for a response
+   - And so on for each piece of information
+5. When you've collected all necessary information, organize it into a structured CV format.
+6. Call the 'generate_cv' function to create the final CV.
 
-Be conversational, professional, and helpful throughout the process.`,
+Be conversational, professional, and helpful throughout the process. Remember to format your responses clearly without showing markdown symbols like ** in the output.`,
       model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       tools: [
         {

@@ -14,6 +14,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
+  
+  // Ensure the uploads directory is accessible
+  console.log(`Uploads directory: ${uploadsDir}`);
+  console.log(`Uploads directory exists: ${fs.existsSync(uploadsDir)}`);
+  
+  // Create a test file to verify write permissions
+  try {
+    const testFilePath = path.join(uploadsDir, 'test-file.txt');
+    fs.writeFileSync(testFilePath, 'Test file content');
+    console.log(`Successfully created test file: ${testFilePath}`);
+  } catch (error) {
+    console.error(`Error creating test file: ${error.message}`);
+  }
 
   // Create a new session
   app.post("/api/session/create", async (req, res) => {
@@ -211,8 +224,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await generateCVPdf(session.cvData, pdfPath);
       
-      // Return the PDF URL
-      const pdfUrl = `/uploads/${pdfFileName}`;
+      // Verify the PDF was created
+      if (!fs.existsSync(pdfPath)) {
+        throw new Error(`PDF file was not created at ${pdfPath}`);
+      }
+
+      console.log(`PDF created successfully at: ${pdfPath}`);
+      console.log(`File size: ${fs.statSync(pdfPath).size} bytes`);
+      
+      // Return the PDF URL for direct download
+      const pdfUrl = `/api/cv/download/${pdfFileName}`;
       
       return res.json({ 
         success: true, 
@@ -221,6 +242,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating PDF:", error);
       return res.status(500).json({ error: "Failed to generate PDF" });
+    }
+  });
+  
+  // Download PDF route
+  app.get("/api/cv/download/:filename", (req, res) => {
+    try {
+      const { filename } = req.params;
+      
+      // Security check to prevent directory traversal
+      if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return res.status(400).json({ error: "Invalid filename" });
+      }
+      
+      const filePath = path.join(uploadsDir, filename);
+      
+      if (!fs.existsSync(filePath)) {
+        console.error(`File not found: ${filePath}`);
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      console.log(`Serving PDF file: ${filePath}`);
+      
+      // Set the correct content type and force download
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      
+      // Stream the file
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+      
+      // Handle errors
+      fileStream.on('error', (error) => {
+        console.error(`Error streaming file: ${error.message}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Error streaming file" });
+        }
+      });
+    } catch (error) {
+      console.error("Error serving PDF:", error);
+      return res.status(500).json({ error: "Failed to serve PDF" });
     }
   });
 

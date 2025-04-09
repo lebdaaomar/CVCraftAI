@@ -142,8 +142,8 @@ export default function Home() {
           <>
             <ProgressIndicator progress={progress} />
             
-            <div className="flex flex-col lg:flex-row gap-6">
-              <div className="lg:w-2/3">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
                 <ChatInterface 
                   sessionId={sessionId} 
                   apiKey={apiKey} 
@@ -160,7 +160,7 @@ export default function Home() {
               </div>
               
               {cvData && (
-                <div className="lg:w-1/3">
+                <div className="lg:col-span-1">
                   <CVPreview 
                     cvData={cvData} 
                     pdfUrl={pdfUrl} 

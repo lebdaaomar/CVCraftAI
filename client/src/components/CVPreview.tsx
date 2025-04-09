@@ -29,14 +29,16 @@ export default function CVPreview({
   return (
     <Card className="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
       <CardContent className="p-4 md:p-6">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
           <h2 className="text-lg font-semibold">CV Preview</h2>
           <Button 
             onClick={handleDownload}
             disabled={isGenerating && !pdfUrl}
-            className="px-4 py-2 bg-secondary hover:bg-green-600 text-white rounded-md font-medium transition-all flex items-center"
+            className="w-full sm:w-auto px-4 py-2 bg-secondary hover:bg-green-600 text-white rounded-md font-medium transition-all flex items-center justify-center shadow-sm"
+            variant="default"
+            size="lg"
           >
-            <Download className="mr-2 h-4 w-4" />
+            <Download className="mr-2 h-5 w-5" />
             {isGenerating && !pdfUrl ? "Generating PDF..." : "Download PDF"}
           </Button>
         </div>

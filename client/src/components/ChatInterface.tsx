@@ -160,7 +160,19 @@ export default function ChatInterface({
                   ? 'bg-primary text-white' 
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
               } p-3 rounded-lg`}>
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <div className="whitespace-pre-wrap">
+                  {message.content.split('\n').map((line, lineIndex) => {
+                    // Handle bold text (replace **text** with <strong>text</strong>)
+                    const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                    return (
+                      <p 
+                        key={lineIndex} 
+                        className={lineIndex > 0 ? 'mt-2' : ''}
+                        dangerouslySetInnerHTML={{ __html: formattedLine }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
               <span className={`text-xs text-gray-500 mt-1 ${message.role === 'user' ? 'block text-right' : ''}`}>
                 {formatTime(message.timestamp)}
