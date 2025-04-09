@@ -34,15 +34,18 @@ export default function ChatInterface({
   
   // Get initial messages
   const { data: initialMessages, isLoading: isLoadingMessages } = useQuery({
-    queryKey: ["/api/conversation/messages", sessionId],
+    queryKey: ["/api/session", sessionId, "messages"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/session/${sessionId}/messages`, undefined);
+      return response.json();
+    },
     enabled: !!sessionId,
   });
 
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (message: string) => {
-      const response = await apiRequest("POST", "/api/conversation/message", {
-        sessionId,
+      const response = await apiRequest("POST", `/api/session/${sessionId}/message`, {
         apiKey,
         message
       });

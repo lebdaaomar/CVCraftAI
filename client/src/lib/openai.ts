@@ -31,7 +31,7 @@ export async function startConversation(sessionId: string, apiKey: string) {
 
 export async function getConversationMessages(sessionId: string) {
   try {
-    const response = await apiRequest("GET", `/api/conversation/messages?sessionId=${sessionId}`, undefined);
+    const response = await apiRequest("GET", `/api/session/${sessionId}/messages`, undefined);
     
     return await response.json();
   } catch (error) {
@@ -42,7 +42,7 @@ export async function getConversationMessages(sessionId: string) {
 
 export async function generatePdf(sessionId: string) {
   try {
-    const response = await apiRequest("POST", "/api/generate-pdf", {
+    const response = await apiRequest("POST", "/api/cv/generate-pdf", {
       sessionId
     });
     

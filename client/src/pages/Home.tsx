@@ -33,7 +33,7 @@ export default function Home() {
   useEffect(() => {
     const initSession = async () => {
       try {
-        const response = await apiRequest("POST", "/api/session/create", {});
+        const response = await apiRequest("POST", "/api/session", {});
         const data = await response.json();
         setSessionId(data.sessionId);
       } catch (error) {
@@ -56,15 +56,18 @@ export default function Home() {
     completed?: boolean;
   }>({
     queryKey: ["/api/session", sessionId],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/session?sessionId=${sessionId}`, undefined);
+      return response.json();
+    },
     enabled: !!sessionId && conversationStarted,
   });
 
   // Start conversation mutation
   const startConversationMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/conversation/start", {
-        apiKey,
-        sessionId,
+      const response = await apiRequest("POST", `/api/session/${sessionId}/start`, {
+        apiKey
       });
       return response.json();
     },
