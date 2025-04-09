@@ -1,0 +1,679 @@
+// server/index.ts
+import express2 from "express";
+
+// server/routes.ts
+import { createServer } from "http";
+
+// server/storage.ts
+var MemStorage = class {
+  sessions;
+  messages;
+  currentId;
+  constructor() {
+    this.sessions = /* @__PURE__ */ new Map();
+    this.messages = /* @__PURE__ */ new Map();
+    this.currentId = 1;
+  }
+  async createSession(data) {
+    const id = this.currentId++;
+    const sessionId = data.sessionId || `session_${id}`;
+    const session = {
+      id,
+      sessionId,
+      assistantId: data.assistantId || null,
+      threadId: data.threadId || null,
+      profession: data.profession || null,
+      sections: data.sections || null,
+      cvData: data.cvData || null,
+      status: data.status || "started",
+      completed: data.completed || false
+    };
+    this.sessions.set(sessionId, session);
+    this.messages.set(sessionId, []);
+    return sessionId;
+  }
+  async getSession(sessionId) {
+    return this.sessions.get(sessionId);
+  }
+  async updateSession(sessionId, data) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+    const updatedSession = {
+      ...session,
+      ...data
+    };
+    this.sessions.set(sessionId, updatedSession);
+    return true;
+  }
+  async saveMessage(sessionId, message) {
+    const sessionMessages = this.messages.get(sessionId) || [];
+    sessionMessages.push(message);
+    this.messages.set(sessionId, sessionMessages);
+    return true;
+  }
+  async getSessionMessages(sessionId) {
+    return this.messages.get(sessionId) || [];
+  }
+};
+var storage = new MemStorage();
+
+// server/routes.ts
+import { nanoid } from "nanoid";
+
+// server/openai.ts
+import OpenAI from "openai";
+function createOpenAIClient(apiKey) {
+  return new OpenAI({ apiKey });
+}
+async function createAssistant(apiKey) {
+  try {
+    const openai = createOpenAIClient(apiKey);
+    const assistant = await openai.beta.assistants.create({
+      name: "CV Builder Assistant",
+      instructions: `You are a professional CV building assistant. Your goal is to help users create a high-quality, professional CV.
+
+Follow this conversation flow:
+1. First, ask for the user's profession.
+2. Based on their profession, suggest relevant CV sections. Ask if they want to keep all sections or add/remove any.
+3. Once sections are confirmed, collect information for each section one by one.
+4. IMPORTANT: Only ask ONE question at a time. Wait for the user's response to each question before asking the next one. For example:
+   - First ask only for their full name, then wait for a response
+   - Then ask only for their email address, then wait for a response
+   - Then ask only for their phone number, then wait for a response
+   - And so on for each piece of information
+5. When you've collected all necessary information, organize it into a structured CV format.
+6. Call the 'generate_cv' function to create the final CV.
+
+Be conversational, professional, and helpful throughout the process. Remember to format your responses clearly without showing markdown symbols like ** in the output.`,
+      model: "gpt-4o",
+      // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "generate_cv",
+            description: "Generate a CV based on the collected information",
+            parameters: {
+              type: "object",
+              properties: {
+                personalInfo: {
+                  type: "object",
+                  properties: {
+                    fullName: { type: "string", description: "User's full name" },
+                    email: { type: "string", description: "User's email address" },
+                    phone: { type: "string", description: "User's phone number" },
+                    location: { type: "string", description: "User's location" },
+                    title: { type: "string", description: "User's professional title" }
+                  },
+                  required: ["fullName"]
+                },
+                sections: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string", description: "Section title" },
+                      content: {
+                        type: "array",
+                        description: "Section content - can be strings, objects, or arrays",
+                        items: {}
+                      }
+                    },
+                    required: ["title", "content"]
+                  }
+                }
+              },
+              required: ["personalInfo", "sections"]
+            }
+          }
+        }
+      ]
+    });
+    return assistant;
+  } catch (error) {
+    console.error("Error creating assistant:", error);
+    throw error;
+  }
+}
+async function createThread(apiKey) {
+  try {
+    const openai = createOpenAIClient(apiKey);
+    const thread = await openai.beta.threads.create({});
+    return thread;
+  } catch (error) {
+    console.error("Error creating thread:", error);
+    throw error;
+  }
+}
+async function processMessage(apiKey, assistantId, threadId, message) {
+  try {
+    const openai = createOpenAIClient(apiKey);
+    await openai.beta.threads.messages.create(threadId, {
+      role: "user",
+      content: message
+    });
+    const run = await openai.beta.threads.runs.create(threadId, {
+      assistant_id: assistantId
+    });
+    let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+    while (runStatus.status !== "completed" && runStatus.status !== "failed") {
+      if (runStatus.status === "requires_action") {
+        const toolCalls = runStatus.required_action?.submit_tool_outputs.tool_calls;
+        if (toolCalls && toolCalls.length > 0) {
+          const toolOutputs = [];
+          for (const toolCall of toolCalls) {
+            if (toolCall.function.name === "generate_cv") {
+              const args = JSON.parse(toolCall.function.arguments);
+              toolOutputs.push({
+                tool_call_id: toolCall.id,
+                output: JSON.stringify({ success: true })
+              });
+              return {
+                assistantMessage: "I've collected all the information and generated your CV. You can now download it as a PDF.",
+                status: "completed",
+                cvData: args
+              };
+            }
+          }
+          if (toolOutputs.length > 0) {
+            await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+              tool_outputs: toolOutputs
+            });
+          }
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+      runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+    }
+    if (runStatus.status === "failed") {
+      throw new Error("Assistant run failed: " + runStatus.last_error?.message);
+    }
+    const messages = await openai.beta.threads.messages.list(threadId, {
+      order: "asc",
+      limit: 100
+    });
+    const assistantMessages = messages.data.filter((msg) => msg.role === "assistant").map((msg) => msg.content.map((content) => {
+      if (content.type === "text") {
+        return content.text.value;
+      }
+      return "";
+    }).join("\n")).filter((content) => content.trim() !== "");
+    const assistantMessage = assistantMessages[assistantMessages.length - 1];
+    let status = null;
+    let profession = null;
+    let sections = null;
+    if (/what is your profession|what do you do for a living|what's your profession/i.test(assistantMessage)) {
+      status = "collecting_profession";
+    }
+    if (/based on your profession as|for your profession as|as a|profession in/i.test(assistantMessage)) {
+      const professionMatch = assistantMessage.match(/profession as a[n]? ([^,.]+)|as a[n]? ([^,.]+)|profession in ([^,.]+)/i);
+      if (professionMatch) {
+        profession = (professionMatch[1] || professionMatch[2] || professionMatch[3]).trim();
+      }
+      if (/suggest|recommend|include these sections|following sections/i.test(assistantMessage)) {
+        status = "selecting_sections";
+        const sectionsList = assistantMessage.split(/\n/).filter((line) => /^\s*[-•*]\s+/.test(line));
+        if (sectionsList.length > 0) {
+          sections = sectionsList.map((section) => section.replace(/^\s*[-•*]\s+/, "").trim());
+        }
+      }
+    }
+    if (/full name|contact information|work experience|provide details|tell me about|could you share/i.test(assistantMessage)) {
+      status = "collecting_details";
+    }
+    if (/review|looks good|summary of|here's what i've|here is what i've|final cv|anything you'd like to change/i.test(assistantMessage)) {
+      status = "review";
+    }
+    return {
+      assistantMessage,
+      status,
+      profession,
+      sections
+    };
+  } catch (error) {
+    console.error("Error processing message:", error);
+    throw error;
+  }
+}
+
+// server/pdf.ts
+import PDFDocument from "pdfkit";
+import fs from "fs";
+async function generateCVPdf(cvData, outputPath) {
+  return new Promise((resolve, reject) => {
+    try {
+      const { personalInfo, sections } = cvData;
+      const doc = new PDFDocument({ margin: 50 });
+      const stream = fs.createWriteStream(outputPath);
+      doc.pipe(stream);
+      doc.fontSize(24).font("Helvetica-Bold").text(personalInfo.fullName, { align: "center" });
+      if (personalInfo.title) {
+        doc.fontSize(14).font("Helvetica").text(personalInfo.title, { align: "center" });
+      }
+      const contactInfo = [];
+      if (personalInfo.email) contactInfo.push(`Email: ${personalInfo.email}`);
+      if (personalInfo.phone) contactInfo.push(`Phone: ${personalInfo.phone}`);
+      if (personalInfo.location) contactInfo.push(`Location: ${personalInfo.location}`);
+      if (contactInfo.length > 0) {
+        doc.moveDown(0.5);
+        doc.fontSize(10).text(contactInfo.join(" | "), { align: "center" });
+      }
+      doc.moveDown(1);
+      for (const section of sections) {
+        doc.fontSize(14).font("Helvetica-Bold").text(section.title);
+        doc.moveDown(0.5);
+        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+        doc.moveDown(0.5);
+        if (typeof section.content === "string") {
+          doc.fontSize(10).font("Helvetica").text(section.content);
+        } else if (Array.isArray(section.content)) {
+          for (const item of section.content) {
+            if (typeof item === "string") {
+              doc.fontSize(10).font("Helvetica").text(item);
+              doc.moveDown(0.5);
+            } else if (typeof item === "object") {
+              if (item.title) {
+                doc.fontSize(12).font("Helvetica-Bold").text(item.title);
+              }
+              if (item.organization && item.period) {
+                doc.fontSize(10).font("Helvetica-Oblique").text(`${item.organization} | ${item.period}`);
+              } else if (item.organization) {
+                doc.fontSize(10).font("Helvetica-Oblique").text(item.organization);
+              } else if (item.period) {
+                doc.fontSize(10).font("Helvetica-Oblique").text(item.period);
+              }
+              if (item.description) {
+                doc.moveDown(0.2);
+                doc.fontSize(10).font("Helvetica").text(item.description);
+              }
+              if (item.items && Array.isArray(item.items)) {
+                doc.moveDown(0.3);
+                for (const bulletItem of item.items) {
+                  doc.fontSize(10).font("Helvetica").text(`\u2022 ${bulletItem}`, { indent: 10 });
+                }
+              }
+              if (item.skills && Array.isArray(item.skills)) {
+                doc.moveDown(0.3);
+                doc.fontSize(10).font("Helvetica").text(item.skills.join(", "));
+              }
+              doc.moveDown(0.5);
+            }
+          }
+        }
+        doc.moveDown(1);
+      }
+      doc.end();
+      stream.on("finish", () => {
+        resolve();
+      });
+      stream.on("error", (err) => {
+        reject(err);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// server/routes.ts
+import * as fs2 from "fs";
+import * as path from "path";
+async function registerRoutes(app2) {
+  const uploadsDir = path.join(process.cwd(), "dist/public/uploads");
+  if (!fs2.existsSync(uploadsDir)) {
+    fs2.mkdirSync(uploadsDir, { recursive: true });
+  }
+  console.log(`Uploads directory: ${uploadsDir}`);
+  console.log(`Uploads directory exists: ${fs2.existsSync(uploadsDir)}`);
+  try {
+    const testFilePath = path.join(uploadsDir, "test-file.txt");
+    fs2.writeFileSync(testFilePath, "Test file content");
+    console.log(`Successfully created test file: ${testFilePath}`);
+  } catch (error) {
+    console.error(`Error creating test file: ${error.message}`);
+  }
+  app2.post("/api/session/create", async (req, res) => {
+    try {
+      const sessionId = nanoid();
+      await storage.createSession({
+        sessionId,
+        status: "started"
+      });
+      return res.json({ success: true, sessionId });
+    } catch (error) {
+      console.error("Error creating session:", error);
+      return res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+  app2.get("/api/session", async (req, res) => {
+    try {
+      const sessionId = req.query.sessionId;
+      if (!sessionId) {
+        return res.status(400).json({ error: "Session ID is required" });
+      }
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      return res.json(session);
+    } catch (error) {
+      console.error("Error fetching session:", error);
+      return res.status(500).json({ error: "Failed to fetch session" });
+    }
+  });
+  app2.post("/api/conversation/start", async (req, res) => {
+    try {
+      const { sessionId, apiKey } = req.body;
+      if (!sessionId || !apiKey) {
+        return res.status(400).json({ error: "Session ID and API Key are required" });
+      }
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (session.assistantId && session.threadId) {
+        return res.json({
+          success: true,
+          assistantId: session.assistantId,
+          threadId: session.threadId
+        });
+      }
+      const assistant = await createAssistant(apiKey);
+      const thread = await createThread(apiKey);
+      await storage.updateSession(sessionId, {
+        assistantId: assistant.id,
+        threadId: thread.id,
+        status: "collecting_profession"
+      });
+      return res.json({
+        success: true,
+        assistantId: assistant.id,
+        threadId: thread.id
+      });
+    } catch (error) {
+      console.error("Error starting conversation:", error);
+      return res.status(500).json({ error: error.message || "Failed to start conversation" });
+    }
+  });
+  app2.get("/api/conversation/messages", async (req, res) => {
+    try {
+      const sessionId = req.query.sessionId;
+      if (!sessionId) {
+        return res.status(400).json({ error: "Session ID is required" });
+      }
+      const messages = await storage.getSessionMessages(sessionId);
+      return res.json({ messages });
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      return res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+  app2.post("/api/conversation/message", async (req, res) => {
+    try {
+      const { sessionId, apiKey, message } = req.body;
+      if (!sessionId || !apiKey || !message) {
+        return res.status(400).json({ error: "Session ID, API Key, and message are required" });
+      }
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (!session.assistantId || !session.threadId) {
+        return res.status(400).json({ error: "Assistant not initialized" });
+      }
+      await storage.saveMessage(sessionId, {
+        role: "user",
+        content: message,
+        timestamp: /* @__PURE__ */ new Date()
+      });
+      const result = await processMessage(
+        apiKey,
+        session.assistantId,
+        session.threadId,
+        message
+      );
+      if (result.assistantMessage) {
+        await storage.saveMessage(sessionId, {
+          role: "assistant",
+          content: result.assistantMessage,
+          timestamp: /* @__PURE__ */ new Date()
+        });
+      }
+      if (result.status) {
+        await storage.updateSession(sessionId, {
+          status: result.status,
+          profession: result.profession || session.profession,
+          sections: result.sections || session.sections,
+          cvData: result.cvData || session.cvData,
+          completed: result.status === "completed" || session.completed
+        });
+      }
+      const messages = await storage.getSessionMessages(sessionId);
+      return res.json({
+        messages,
+        status: result.status,
+        cvData: result.cvData
+      });
+    } catch (error) {
+      console.error("Error processing message:", error);
+      return res.status(500).json({ error: error.message || "Failed to process message" });
+    }
+  });
+  app2.post("/api/cv/generate-pdf", async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      if (!sessionId) {
+        return res.status(400).json({ error: "Session ID is required" });
+      }
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (!session.cvData) {
+        return res.status(400).json({ error: "CV data not found" });
+      }
+      const pdfFileName = `cv_${sessionId}_${Date.now()}.pdf`;
+      const pdfPath = path.join(uploadsDir, pdfFileName);
+      await generateCVPdf(session.cvData, pdfPath);
+      if (!fs2.existsSync(pdfPath)) {
+        throw new Error(`PDF file was not created at ${pdfPath}`);
+      }
+      console.log(`PDF created successfully at: ${pdfPath}`);
+      console.log(`File size: ${fs2.statSync(pdfPath).size} bytes`);
+      const pdfUrl = `/api/cv/download/${pdfFileName}`;
+      return res.json({
+        success: true,
+        pdfUrl
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      return res.status(500).json({ error: "Failed to generate PDF" });
+    }
+  });
+  app2.get("/api/cv/download/:filename", (req, res) => {
+    try {
+      const { filename } = req.params;
+      if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
+        return res.status(400).json({ error: "Invalid filename" });
+      }
+      const filePath = path.join(uploadsDir, filename);
+      if (!fs2.existsSync(filePath)) {
+        console.error(`File not found: ${filePath}`);
+        return res.status(404).json({ error: "File not found" });
+      }
+      console.log(`Serving PDF file: ${filePath}`);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      const fileStream = fs2.createReadStream(filePath);
+      fileStream.pipe(res);
+      fileStream.on("error", (error) => {
+        console.error(`Error streaming file: ${error.message}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Error streaming file" });
+        }
+      });
+    } catch (error) {
+      console.error("Error serving PDF:", error);
+      return res.status(500).json({ error: "Failed to serve PDF" });
+    }
+  });
+  const httpServer = createServer(app2);
+  return httpServer;
+}
+
+// server/vite.ts
+import express from "express";
+import fs3 from "fs";
+import path3 from "path";
+import { createServer as createViteServer, createLogger } from "vite";
+
+// vite.config.ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import themePlugin from "@replit/vite-plugin-shadcn-theme-json";
+import path2 from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+var vite_config_default = defineConfig({
+  plugins: [
+    react(),
+    runtimeErrorOverlay(),
+    themePlugin(),
+    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
+      await import("@replit/vite-plugin-cartographer").then(
+        (m) => m.cartographer()
+      )
+    ] : []
+  ],
+  resolve: {
+    alias: {
+      "@": path2.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path2.resolve(import.meta.dirname, "shared"),
+      "@assets": path2.resolve(import.meta.dirname, "attached_assets")
+    }
+  },
+  root: path2.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: path2.resolve(import.meta.dirname, "dist/public"),
+    emptyOutDir: true
+  }
+});
+
+// server/vite.ts
+import { nanoid as nanoid2 } from "nanoid";
+var viteLogger = createLogger();
+function log(message, source = "express") {
+  const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+async function setupVite(app2, server) {
+  const serverOptions = {
+    middlewareMode: true,
+    hmr: { server },
+    allowedHosts: true
+  };
+  const vite = await createViteServer({
+    ...vite_config_default,
+    configFile: false,
+    customLogger: {
+      ...viteLogger,
+      error: (msg, options) => {
+        viteLogger.error(msg, options);
+        process.exit(1);
+      }
+    },
+    server: serverOptions,
+    appType: "custom"
+  });
+  app2.use(vite.middlewares);
+  app2.use("*", async (req, res, next) => {
+    const url = req.originalUrl;
+    try {
+      const clientTemplate = path3.resolve(
+        import.meta.dirname,
+        "..",
+        "client",
+        "index.html"
+      );
+      let template = await fs3.promises.readFile(clientTemplate, "utf-8");
+      template = template.replace(
+        `src="/src/main.tsx"`,
+        `src="/src/main.tsx?v=${nanoid2()}"`
+      );
+      const page = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+    } catch (e) {
+      vite.ssrFixStacktrace(e);
+      next(e);
+    }
+  });
+}
+function serveStatic(app2) {
+  const distPath = path3.resolve(import.meta.dirname, "public");
+  if (!fs3.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
+  }
+  app2.use(express.static(distPath));
+  app2.use("*", (_req, res) => {
+    res.sendFile(path3.resolve(distPath, "index.html"));
+  });
+}
+
+// server/index.ts
+var app = express2();
+app.use(express2.json());
+app.use(express2.urlencoded({ extended: false }));
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path4 = req.path;
+  let capturedJsonResponse = void 0;
+  const originalResJson = res.json;
+  res.json = function(bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path4.startsWith("/api")) {
+      let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+      if (logLine.length > 80) {
+        logLine = logLine.slice(0, 79) + "\u2026";
+      }
+      log(logLine);
+    }
+  });
+  next();
+});
+(async () => {
+  const server = await registerRoutes(app);
+  app.use((err, _req, res, _next) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    res.status(status).json({ message });
+    throw err;
+  });
+  if (app.get("env") === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+  const port = 5e3;
+  server.listen({
+    port,
+    host: "0.0.0.0",
+    reusePort: true
+  }, () => {
+    log(`serving on port ${port}`);
+  });
+})();
