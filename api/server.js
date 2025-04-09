@@ -29,7 +29,8 @@ class MemStorage {
   }
 
   async createSession(data = {}) {
-    const sessionId = data.sessionId || `session_${Date.now()}`;
+    const timestamp = Date.now();
+    const sessionId = data.sessionId || 'session_' + timestamp;
     const session = {
       id: this.currentId++,
       sessionId,
@@ -88,21 +89,7 @@ async function createAssistant(apiKey) {
     const openai = await createOpenAIClient(apiKey);
     const assistant = await openai.beta.assistants.create({
       name: "CV Builder Assistant",
-      instructions: `You are a professional CV building assistant. Your goal is to help users create a high-quality, professional CV.
-
-Follow this conversation flow:
-1. First, ask for the user's profession.
-2. Based on their profession, suggest relevant CV sections. Ask if they want to keep all sections or add/remove any.
-3. Once sections are confirmed, collect information for each section one by one.
-4. IMPORTANT: Only ask ONE question at a time. Wait for the user's response to each question before asking the next one. For example:
-   - First ask only for their full name, then wait for a response
-   - Then ask only for their email address, then wait for a response
-   - Then ask only for their phone number, then wait for a response
-   - And so on for each piece of information
-5. When you've collected all necessary information, organize it into a structured CV format.
-6. Call the 'generate_cv' function to create the final CV.
-
-Be conversational, professional, and helpful throughout the process. Remember to format your responses clearly without showing markdown symbols like ** in the output.`,
+      instructions: "You are a professional CV building assistant. Your goal is to help users create a high-quality, professional CV.\n\nFollow this conversation flow:\n1. First, ask for the user's profession.\n2. Based on their profession, suggest relevant CV sections. Ask if they want to keep all sections or add/remove any.\n3. Once sections are confirmed, collect information for each section one by one.\n4. IMPORTANT: Only ask ONE question at a time. Wait for the user's response to each question before asking the next one. For example:\n   - First ask only for their full name, then wait for a response\n   - Then ask only for their email address, then wait for a response\n   - Then ask only for their phone number, then wait for a response\n   - And so on for each piece of information\n5. When you've collected all necessary information, organize it into a structured CV format.\n6. Call the 'generate_cv' function to create the final CV.\n\nBe conversational, professional, and helpful throughout the process. Remember to format your responses clearly without showing markdown symbols like ** in the output.",
       model: "gpt-4o",
       // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
       tools: [
@@ -300,9 +287,9 @@ async function generateCVPdf(cvData, outputPath) {
       }
       
       const contactInfo = [];
-      if (personalInfo.email) contactInfo.push(`Email: ${personalInfo.email}`);
-      if (personalInfo.phone) contactInfo.push(`Phone: ${personalInfo.phone}`);
-      if (personalInfo.location) contactInfo.push(`Location: ${personalInfo.location}`);
+      if (personalInfo.email) contactInfo.push("Email: " + personalInfo.email);
+      if (personalInfo.phone) contactInfo.push("Phone: " + personalInfo.phone);
+      if (personalInfo.location) contactInfo.push("Location: " + personalInfo.location);
       
       if (contactInfo.length > 0) {
         doc.moveDown(0.5);
@@ -331,7 +318,7 @@ async function generateCVPdf(cvData, outputPath) {
               }
               
               if (item.organization && item.period) {
-                doc.fontSize(10).font("Helvetica-Oblique").text(`${item.organization} | ${item.period}`);
+                doc.fontSize(10).font("Helvetica-Oblique").text(item.organization + " | " + item.period);
               } else if (item.organization) {
                 doc.fontSize(10).font("Helvetica-Oblique").text(item.organization);
               } else if (item.period) {
@@ -346,7 +333,7 @@ async function generateCVPdf(cvData, outputPath) {
               if (item.items && Array.isArray(item.items)) {
                 doc.moveDown(0.3);
                 for (const bulletItem of item.items) {
-                  doc.fontSize(10).font("Helvetica").text(`• ${bulletItem}`, { indent: 10 });
+                  doc.fontSize(10).font("Helvetica").text("• " + bulletItem, { indent: 10 });
                 }
               }
               
@@ -517,8 +504,9 @@ app.post('/api/generate-pdf', async (req, res) => {
       return res.status(404).json({ error: 'Session not found or CV data not available' });
     }
     
-    // Generate a unique filename for the PDF
-    const filename = `cv_${sessionId}_${Date.now()}.pdf`;
+    // Generate a unique filename for the PDF using string concatenation
+    const timestamp = Date.now();
+    const filename = 'cv_' + sessionId + '_' + timestamp + '.pdf';
     const outputPath = path.join(uploadsDir, filename);
     
     await generateCVPdf(session.cvData, outputPath);
@@ -528,15 +516,16 @@ app.post('/api/generate-pdf', async (req, res) => {
       // Instead of returning a URL, return the file directly
       const data = fs.readFileSync(outputPath);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
       res.send(data);
       
       // Clean up the file after sending (for Vercel's ephemeral filesystem)
       fs.unlinkSync(outputPath);
     } else {
       // Local development - return URL as before
-      const pdfUrl = `/uploads/${filename}`;
-      res.json({ success: true, pdfUrl });
+      // Using string concatenation instead of template literals for Vercel compatibility
+      const pdfUrl = '/uploads/' + filename;
+      res.json({ success: true, pdfUrl: pdfUrl });
     }
   } catch (error) {
     console.error('Error generating PDF:', error);
@@ -553,9 +542,9 @@ try {
   // Check if the path exists before trying to serve from it
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
-    console.log(`Serving static files from: ${staticPath}`);
+    console.log('Serving static files from: ' + staticPath);
   } else {
-    console.warn(`Static path not found: ${staticPath}`);
+    console.warn('Static path not found: ' + staticPath);
   }
 } catch (err) {
   console.error('Error setting up static file serving:', err);
@@ -578,616 +567,67 @@ app.get('*', (req, res) => {
         if (fs.existsSync(indexPath)) {
           return res.sendFile(indexPath);
         } else {
-          // Fallback to a simple HTML response
-          return res.send(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <title>CV Generator</title>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                  body { 
-                    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
-                    max-width: 800px; 
-                    margin: 0 auto; 
-                    padding: 20px;
-                    line-height: 1.5;
-                    color: #333;
-                  }
-                  h1 { 
-                    color: #333; 
-                    margin-bottom: 10px;
-                  }
-                  h2 {
-                    margin-top: 0;
-                    padding-bottom: 10px;
-                    border-bottom: 1px solid #eaeaea;
-                  }
-                  .container { 
-                    margin-top: 30px; 
-                  }
-                  .api-key { 
-                    margin: 20px 0; 
-                    padding: 20px;
-                    background: #f8f9fa;
-                    border-radius: 10px;
-                  }
-                  input { 
-                    padding: 12px 16px; 
-                    width: 100%; 
-                    max-width: 400px;
-                    border: 1px solid #ddd;
-                    border-radius: 6px;
-                    font-size: 16px;
-                    transition: border-color 0.2s ease;
-                  }
-                  input:focus {
-                    outline: none;
-                    border-color: #4a90e2;
-                    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
-                  }
-                  button { 
-                    margin-top: 10px; 
-                    padding: 12px 24px; 
-                    background: #4a90e2; 
-                    color: white; 
-                    border: none; 
-                    border-radius: 6px;
-                    font-size: 16px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: background-color 0.2s ease;
-                  }
-                  button:hover {
-                    background: #3a80d2;
-                  }
-                  button:active {
-                    background: #2a70c2;
-                  }
-                  
-                  /* Chat specific styles */
-                  #chat {
-                    display: flex;
-                    flex-direction: column;
-                    height: calc(100vh - 150px);
-                    min-height: 400px;
-                  }
-                  #messages {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 20px;
-                    background: #f8f9fa;
-                    border-radius: 10px 10px 0 0;
-                    margin-bottom: 0;
-                  }
-                  .message {
-                    margin: 10px 0;
-                    max-width: 80%;
-                    word-wrap: break-word;
-                  }
-                  .user-message {
-                    margin-left: auto;
-                    background: #e3f2fd;
-                    padding: 12px 16px;
-                    border-radius: 18px 18px 4px 18px;
-                    color: #0d47a1;
-                    align-self: flex-end;
-                    text-align: left;
-                  }
-                  .assistant-message {
-                    background: #f1f1f1;
-                    padding: 12px 16px;
-                    border-radius: 18px 18px 18px 4px;
-                    color: #424242;
-                    align-self: flex-start;
-                  }
-                  .input-area {
-                    display: flex;
-                    padding: 15px;
-                    background: #fff;
-                    border: 1px solid #eaeaea;
-                    border-radius: 0 0 10px 10px;
-                  }
-                  .input-area input {
-                    flex: 1;
-                    margin-right: 10px;
-                    padding: 12px 16px;
-                    border: 1px solid #ddd;
-                    border-radius: 30px;
-                  }
-                  .input-area button {
-                    margin-top: 0;
-                    border-radius: 30px;
-                    padding: 8px 20px;
-                    background: #4a90e2;
-                    font-weight: 500;
-                  }
-                </style>
-              </head>
-              <body>
-                <h1>CV Generator</h1>
-                <p>Welcome to the CV Generator application. This app uses OpenAI's API to help you create a professional CV.</p>
-                <div class="container">
-                  <div class="api-key">
-                    <h2>Enter your OpenAI API Key</h2>
-                    <p>This application requires your OpenAI API key to function.</p>
-                    <input type="text" id="apiKey" placeholder="sk-..." />
-                    <button onclick="startApp()">Start CV Generator</button>
-                  </div>
-                  <div id="status"></div>
-                </div>
-                <script>
-                  async function startApp() {
-                    const apiKey = document.getElementById('apiKey').value.trim();
-                    if (!apiKey) {
-                      document.getElementById('status').innerHTML = '<p style="color: red;">Please enter a valid API key.</p>';
-                      return;
-                    }
-                    
-                    document.getElementById('status').innerHTML = '<p>Starting session...</p>';
-                    
-                    try {
-                      // Create a new session
-                      const sessionRes = await fetch('/api/session', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                      });
-                      
-                      if (!sessionRes.ok) throw new Error('Failed to create session');
-                      
-                      const { sessionId } = await sessionRes.json();
-                      
-                      // Start the conversation
-                      const startRes = await fetch('/api/conversation/start', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ sessionId, apiKey })
-                      });
-                      
-                      if (!startRes.ok) throw new Error('Failed to start conversation');
-                      
-                      document.getElementById('status').innerHTML = '<p style="color: green;">Session started! The chat interface will appear momentarily...</p>';
-                      
-                      // Start a simple chat interface
-                      document.querySelector('.container').innerHTML = `
-                        <div id="chat">
-                          <h2>CV Generator Chat</h2>
-                          <div id="messages"></div>
-                          <div class="input-area">
-                            <input type="text" id="userMessage" placeholder="Type your message..." />
-                            <button id="sendButton">Send</button>
-                          </div>
-                        </div>
-                      `;
-                      
-                      // Set up event listeners for sending messages
-                      document.getElementById('sendButton').addEventListener('click', sendMessage);
-                      document.getElementById('userMessage').addEventListener('keydown', function(event) {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          sendMessage();
-                        }
-                      });
-                      
-                      // Store session ID and API key for later use
-                      window.sessionId = sessionId;
-                      window.apiKey = apiKey;
-                      
-                      // Send an initial greeting to trigger the assistant's first question
-                      sendInitialGreeting();
-                    } catch (error) {
-                      document.getElementById('status').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
-                    }
-                  }
-                  
-                  async function sendInitialGreeting() {
-                    try {
-                      // Send a hello message to start the conversation
-                      const res = await fetch('/api/conversation/message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                          sessionId: window.sessionId, 
-                          apiKey: window.apiKey, 
-                          message: "Hello, I'd like to create a CV" 
-                        })
-                      });
-                      
-                      if (!res.ok) throw new Error('Failed to start conversation');
-                      
-                      // Get the messages (including the assistant's response)
-                      getMessages(window.sessionId);
-                    } catch (error) {
-                      console.error('Error sending initial greeting:', error);
-                    }
-                  }
-                  
-                  async function sendMessage() {
-                    const message = document.getElementById('userMessage').value.trim();
-                    if (!message) return;
-                    
-                    document.getElementById('userMessage').value = '';
-                    
-                    const messagesDiv = document.getElementById('messages');
-                    messagesDiv.innerHTML += '<div class="message user-message">' + message + '</div>';
-                    
-                    try {
-                      const res = await fetch('/api/conversation/message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                          sessionId: window.sessionId, 
-                          apiKey: window.apiKey, 
-                          message 
-                        })
-                      });
-                      
-                      if (!res.ok) throw new Error('Failed to send message');
-                      
-                      const data = await res.json();
-                      getMessages(window.sessionId);
-                    } catch (error) {
-                      messagesDiv.innerHTML += '<div class="message assistant-message" style="color: #d32f2f;">Error: ' + error.message + '</div>';
-                    }
-                  }
-                  
-                  async function getMessages(sessionId) {
-                    try {
-                      const res = await fetch('/api/session/' + sessionId + '/messages');
-                      if (!res.ok) throw new Error('Failed to get messages');
-                      
-                      const data = await res.json();
-                      const messagesDiv = document.getElementById('messages');
-                      messagesDiv.innerHTML = '';
-                      
-                      data.messages.forEach(msg => {
-                        if (msg.role === 'user') {
-                          messagesDiv.innerHTML += '<div class="message user-message">' + msg.content + '</div>';
-                        } else {
-                          messagesDiv.innerHTML += '<div class="message assistant-message">' + msg.content + '</div>';
-                        }
-                      });
-                      
-                      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    } catch (error) {
-                      console.error('Error getting messages:', error);
-                    }
-                  }
-                </script>
-              </body>
-            </html>
-          `);
+          // Create a minimal fallback page with string concatenation to avoid template literal parsing issues
+          const html = '<!DOCTYPE html><html>' +
+            '<head><title>CV Generator</title><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+            '<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:20px}' +
+            'h1{color:#333;margin-bottom:20px}input{padding:12px;width:100%;max-width:400px;border:1px solid #ddd;border-radius:6px}' +
+            'button{margin-top:10px;padding:12px 24px;background:#4a90e2;color:white;border:none;border-radius:6px;cursor:pointer}' +
+            '.container{margin-top:30px}.api-key{margin:20px 0;padding:20px;background:#f8f9fa;border-radius:10px}</style>' +
+            '</head><body>' +
+            '<h1>CV Generator</h1>' +
+            '<p>Welcome to the CV Generator application. This app uses OpenAI\'s API to help you create a professional CV.</p>' +
+            '<div class="container"><div class="api-key">' +
+            '<h2>Enter your OpenAI API Key</h2>' +
+            '<p>This application requires your OpenAI API key to function.</p>' +
+            '<input type="text" id="apiKey" placeholder="sk-..." />' +
+            '<button onclick="startApp()">Start CV Generator</button>' +
+            '</div><div id="status"></div></div>' +
+            '<script>' +
+            'async function startApp(){const e=document.getElementById("apiKey").value.trim();if(!e){document.getElementById("status").innerHTML="<p style=\\"color:red\\">Please enter a valid API key.</p>";return}' +
+            'document.getElementById("status").innerHTML="<p>Starting session...</p>";try{const t=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"}});if(!t.ok)throw new Error("Failed to create session");' +
+            'const{sessionId:s}=await t.json(),n=await fetch("/api/conversation/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:s,apiKey:e})});if(!n.ok)throw new Error("Failed to start conversation");' +
+            'document.getElementById("status").innerHTML="<p style=\\"color:green\\">Session started! The chat interface will appear momentarily...</p>";document.querySelector(".container").innerHTML="<div id=\\"chat\\"><h2>CV Generator Chat</h2><div id=\\"messages\\"></div><div class=\\"input-area\\"><input type=\\"text\\" id=\\"userMessage\\" placeholder=\\"Type your message...\\" /><button id=\\"sendButton\\">Send</button></div></div>";' +
+            'document.getElementById("sendButton").addEventListener("click",sendMessage);document.getElementById("userMessage").addEventListener("keydown",function(e){"Enter"===e.key&&(e.preventDefault(),sendMessage())});window.sessionId=s;window.apiKey=e;sendInitialGreeting()}catch(e){document.getElementById("status").innerHTML="<p style=\\"color:red\\">Error: "+e.message+"</p>"}}' +
+            'async function sendInitialGreeting(){try{const e=await fetch("/api/conversation/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:window.sessionId,apiKey:window.apiKey,message:"Hello, I\'d like to create a CV"})});if(!e.ok)throw new Error("Failed to start conversation");getMessages(window.sessionId)}catch(e){console.error("Error sending initial greeting:",e)}}' +
+            'async function sendMessage(){const e=document.getElementById("userMessage").value.trim();if(!e)return;document.getElementById("userMessage").value="";const t=document.getElementById("messages");t.innerHTML+="<div class=\\"message user-message\\">"+e+"</div>";try{const s=await fetch("/api/conversation/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:window.sessionId,apiKey:window.apiKey,message:e})});if(!s.ok)throw new Error("Failed to send message");getMessages(window.sessionId)}catch(e){t.innerHTML+="<div class=\\"message assistant-message\\" style=\\"color:#d32f2f\\">Error: "+e.message+"</div>"}}' +
+            'async function getMessages(e){try{const t=await fetch("/api/session/"+e+"/messages");if(!t.ok)throw new Error("Failed to get messages");const s=await t.json(),n=document.getElementById("messages");n.innerHTML="",s.messages.forEach(e=>{"user"===e.role?n.innerHTML+="<div class=\\"message user-message\\">"+e.content+"</div>":n.innerHTML+="<div class=\\"message assistant-message\\">"+e.content+"</div>"}),n.scrollTop=n.scrollHeight}catch(e){console.error("Error getting messages:",e)}}' +
+            '</script></body></html>';
+            
+          return res.send(html);
+        }
+      } else {
+        // Not root path, try serving static files
+        const indexPath = path.join(__dirname, '../public/index.html');
+        if (fs.existsSync(indexPath)) {
+          return res.sendFile(indexPath);
+        } else {
+          return res.status(404).json({ error: 'Not found', message: 'API running at /api' });
         }
       }
+    } else {
+      // If not running on Vercel, serve static files from the dist directory
+      const indexPath = path.join(__dirname, '../dist/index.html');
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      } else {
+        return res.status(404).json({ error: 'Not found', message: 'API running at /api' });
+      }
     }
-    
-    // Standard behavior for other environments or paths
-    const indexPath = process.env.VERCEL 
-      ? path.join(__dirname, '../public/index.html')
-      : path.join(__dirname, '../dist/index.html');
-    
-    res.sendFile(indexPath);
-  } catch (err) {
-    console.error('Error serving static content:', err);
-    res.status(500).json({ error: 'Failed to serve content', details: err.message });
+  } catch (error) {
+    console.error('Error handling catchall route:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Handle errors
-app.use((err, req, res, next) => {
-  console.error('Server error:', err);
-  
-  // Check if this is an API route
-  if (req.path.startsWith('/api/')) {
-    return res.status(500).json({ 
-      error: 'Something went wrong!', 
-      details: process.env.NODE_ENV === 'production' ? 'See server logs for details' : err.message,
-      path: req.path
-    });
-  }
-  
-  // For non-API routes in a Vercel environment, serve the fallback interface
-  if (process.env.VERCEL) {
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>CV Generator - Error Recovery</title>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { 
-              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
-              max-width: 800px; 
-              margin: 0 auto; 
-              padding: 20px;
-              line-height: 1.5;
-              color: #333;
-            }
-            h1 { 
-              color: #e53e3e; 
-              margin-bottom: 10px;
-            }
-            h2 {
-              margin-top: 0;
-              padding-bottom: 10px;
-              border-bottom: 1px solid #eaeaea;
-            }
-            .container { 
-              margin-top: 30px; 
-            }
-            .error-box { 
-              background: #fff5f5; 
-              border: 1px solid #fed7d7; 
-              padding: 18px;
-              border-radius: 10px;
-              margin-bottom: 20px;
-            }
-            .api-key { 
-              margin: 20px 0; 
-              padding: 20px;
-              background: #f8f9fa;
-              border-radius: 10px;
-            }
-            input { 
-              padding: 12px 16px; 
-              width: 100%; 
-              max-width: 400px;
-              border: 1px solid #ddd;
-              border-radius: 6px;
-              font-size: 16px;
-              transition: border-color 0.2s ease;
-            }
-            input:focus {
-              outline: none;
-              border-color: #4a90e2;
-              box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
-            }
-            button { 
-              margin-top: 10px; 
-              padding: 12px 24px; 
-              background: #4a90e2; 
-              color: white; 
-              border: none; 
-              border-radius: 6px;
-              font-size: 16px;
-              font-weight: 500;
-              cursor: pointer;
-              transition: background-color 0.2s ease;
-            }
-            button:hover {
-              background: #3a80d2;
-            }
-            button:active {
-              background: #2a70c2;
-            }
-            
-            /* Chat specific styles */
-            #chat {
-              display: flex;
-              flex-direction: column;
-              height: calc(100vh - 150px);
-              min-height: 400px;
-            }
-            #messages {
-              flex: 1;
-              overflow-y: auto;
-              padding: 20px;
-              background: #f8f9fa;
-              border-radius: 10px 10px 0 0;
-              margin-bottom: 0;
-            }
-            .message {
-              margin: 10px 0;
-              max-width: 80%;
-              word-wrap: break-word;
-            }
-            .user-message {
-              margin-left: auto;
-              background: #e3f2fd;
-              padding: 12px 16px;
-              border-radius: 18px 18px 4px 18px;
-              color: #0d47a1;
-              align-self: flex-end;
-              text-align: left;
-            }
-            .assistant-message {
-              background: #f1f1f1;
-              padding: 12px 16px;
-              border-radius: 18px 18px 18px 4px;
-              color: #424242;
-              align-self: flex-start;
-            }
-            .input-area {
-              display: flex;
-              padding: 15px;
-              background: #fff;
-              border: 1px solid #eaeaea;
-              border-radius: 0 0 10px 10px;
-            }
-            .input-area input {
-              flex: 1;
-              margin-right: 10px;
-              padding: 12px 16px;
-              border: 1px solid #ddd;
-              border-radius: 30px;
-            }
-            .input-area button {
-              margin-top: 0;
-              border-radius: 30px;
-              padding: 8px 20px;
-              background: #4a90e2;
-              font-weight: 500;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>CV Generator - Error Recovery Mode</h1>
-          <div class="error-box">
-            <p>We encountered an error loading the application. This fallback interface will allow you to use the CV Generator.</p>
-          </div>
-          <div class="container">
-            <div class="api-key">
-              <h2>Enter your OpenAI API Key</h2>
-              <p>This application requires your OpenAI API key to function.</p>
-              <input type="text" id="apiKey" placeholder="sk-..." />
-              <button onclick="startApp()">Start CV Generator</button>
-            </div>
-            <div id="status"></div>
-          </div>
-          <script>
-            async function startApp() {
-              const apiKey = document.getElementById('apiKey').value.trim();
-              if (!apiKey) {
-                document.getElementById('status').innerHTML = '<p style="color: red;">Please enter a valid API key.</p>';
-                return;
-              }
-              
-              document.getElementById('status').innerHTML = '<p>Starting session...</p>';
-              
-              try {
-                // Create a new session
-                const sessionRes = await fetch('/api/session', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' }
-                });
-                
-                if (!sessionRes.ok) throw new Error('Failed to create session');
-                
-                const { sessionId } = await sessionRes.json();
-                
-                // Start the conversation
-                const startRes = await fetch('/api/conversation/start', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ sessionId, apiKey })
-                });
-                
-                if (!startRes.ok) throw new Error('Failed to start conversation');
-                
-                document.getElementById('status').innerHTML = '<p style="color: green;">Session started! The chat interface will appear momentarily...</p>';
-                
-                // Start a simple chat interface
-                document.querySelector('.container').innerHTML = `
-                  <div id="chat">
-                    <h2>CV Generator Chat</h2>
-                    <div id="messages"></div>
-                    <div class="input-area">
-                      <input type="text" id="userMessage" placeholder="Type your message..." />
-                      <button id="sendButton">Send</button>
-                    </div>
-                  </div>
-                `;
-                
-                // Set up event listeners for sending messages
-                document.getElementById('sendButton').addEventListener('click', sendMessage);
-                document.getElementById('userMessage').addEventListener('keydown', function(event) {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    sendMessage();
-                  }
-                });
-                
-                // Store session ID and API key for later use
-                window.sessionId = sessionId;
-                window.apiKey = apiKey;
-                
-                // Send an initial greeting to get the first question
-                sendInitialGreeting();
-              } catch (error) {
-                document.getElementById('status').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
-              }
-            }
-            
-            async function sendInitialGreeting() {
-              try {
-                // Send a hello message to start the conversation
-                const res = await fetch('/api/conversation/message', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                    sessionId: window.sessionId, 
-                    apiKey: window.apiKey, 
-                    message: "Hello, I'd like to create a CV" 
-                  })
-                });
-                
-                if (!res.ok) throw new Error('Failed to start conversation');
-                
-                // Get the messages (including the assistant's response)
-                getMessages(window.sessionId);
-              } catch (error) {
-                console.error('Error sending initial greeting:', error);
-              }
-            }
-            
-            async function sendMessage() {
-              const message = document.getElementById('userMessage').value.trim();
-              if (!message) return;
-              
-              document.getElementById('userMessage').value = '';
-              
-              const messagesDiv = document.getElementById('messages');
-              messagesDiv.innerHTML += '<div class="message user-message">' + message + '</div>';
-              
-              try {
-                const res = await fetch('/api/conversation/message', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                    sessionId: window.sessionId, 
-                    apiKey: window.apiKey, 
-                    message 
-                  })
-                });
-                
-                if (!res.ok) throw new Error('Failed to send message');
-                
-                const data = await res.json();
-                getMessages(window.sessionId);
-              } catch (error) {
-                messagesDiv.innerHTML += '<div class="message assistant-message" style="color: #d32f2f;">Error: ' + error.message + '</div>';
-              }
-            }
-            
-            async function getMessages(sessionId) {
-              try {
-                const res = await fetch('/api/session/' + sessionId + '/messages');
-                if (!res.ok) throw new Error('Failed to get messages');
-                
-                const data = await res.json();
-                const messagesDiv = document.getElementById('messages');
-                messagesDiv.innerHTML = '';
-                
-                data.messages.forEach(msg => {
-                  if (msg.role === 'user') {
-                    messagesDiv.innerHTML += '<div class="message user-message">' + msg.content + '</div>';
-                  } else {
-                    messagesDiv.innerHTML += '<div class="message assistant-message">' + msg.content + '</div>';
-                  }
-                });
-                
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-              } catch (error) {
-                console.error('Error getting messages:', error);
-              }
-            }
-          </script>
-        </body>
-      </html>
-    `);
-  }
-  
-  // Standard error handling for other environments
-  res.status(500).send('Server Error. Please try again later.');
-});
+// Create a server
+const server = createServer(app);
 
 // Start the server when not running on Vercel
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log('Server running on port ' + PORT);
   });
 }
 
