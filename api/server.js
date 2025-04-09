@@ -642,14 +642,36 @@ app.get('*', (req, res) => {
                       // Start a simple chat interface
                       document.querySelector('.container').innerHTML = '<div id="chat"><h2>CV Generator Chat</h2><div id="messages"></div><div class="input-area"><input type="text" id="userMessage" placeholder="Type your message..." /><button onclick="sendMessage()">Send</button></div></div>';
                       
-                      // Get initial message
-                      getMessages(sessionId);
-                      
                       // Store session ID and API key for later use
                       window.sessionId = sessionId;
                       window.apiKey = apiKey;
+                      
+                      // Send an initial greeting to trigger the assistant's first question
+                      sendInitialGreeting();
                     } catch (error) {
                       document.getElementById('status').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+                    }
+                  }
+                  
+                  async function sendInitialGreeting() {
+                    try {
+                      // Send a hello message to start the conversation
+                      const res = await fetch('/api/conversation/message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          sessionId: window.sessionId, 
+                          apiKey: window.apiKey, 
+                          message: "Hello, I'd like to create a CV" 
+                        })
+                      });
+                      
+                      if (!res.ok) throw new Error('Failed to start conversation');
+                      
+                      // Get the messages (including the assistant's response)
+                      getMessages(window.sessionId);
+                    } catch (error) {
+                      console.error('Error sending initial greeting:', error);
                     }
                   }
                   
@@ -805,14 +827,36 @@ app.use((err, req, res, next) => {
                 // Start a simple chat interface
                 document.querySelector('.container').innerHTML = '<div id="chat"><h2>CV Generator Chat</h2><div id="messages"></div><div class="input-area"><input type="text" id="userMessage" placeholder="Type your message..." /><button onclick="sendMessage()">Send</button></div></div>';
                 
-                // Get initial message
-                getMessages(sessionId);
-                
                 // Store session ID and API key for later use
                 window.sessionId = sessionId;
                 window.apiKey = apiKey;
+                
+                // Send an initial greeting to get the first question
+                sendInitialGreeting();
               } catch (error) {
                 document.getElementById('status').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+              }
+            }
+            
+            async function sendInitialGreeting() {
+              try {
+                // Send a hello message to start the conversation
+                const res = await fetch('/api/conversation/message', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    sessionId: window.sessionId, 
+                    apiKey: window.apiKey, 
+                    message: "Hello, I'd like to create a CV" 
+                  })
+                });
+                
+                if (!res.ok) throw new Error('Failed to start conversation');
+                
+                // Get the messages (including the assistant's response)
+                getMessages(window.sessionId);
+              } catch (error) {
+                console.error('Error sending initial greeting:', error);
               }
             }
             
