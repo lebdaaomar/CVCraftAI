@@ -1,0 +1,15 @@
+{
+  "name": "cv-generator-api",
+  "version": "1.0.0",
+  "description": "API for CV Generator",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "fs": "0.0.1-security",
+    "http": "0.0.1-security",
+    "nanoid": "^3.3.6",
+    "openai": "^4.40.0",
+    "path": "^0.12.7",
+    "pdfkit": "^0.13.0"
+  }
+}
