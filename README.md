@@ -68,3 +68,19 @@ For detailed Render deployment instructions, see [RENDER_DEPLOY.md](RENDER_DEPLO
 ## Note on API Keys
 
 This application requires each user to provide their own OpenAI API key. The key is only used for your session and is not stored permanently.
+
+## Deployment Tips
+
+### Environment Variables
+- No environment variables need to be set for the application to work
+- All required keys are provided by the users at runtime
+
+### Troubleshooting Common Issues
+- If you see raw code instead of the application after deployment, check your `vercel.json` configuration
+- If PDF generation fails, ensure your OpenAI API key has sufficient quota
+- For best results, use the latest OpenAI models (the app defaults to gpt-4o)
+
+### Security Considerations
+- User API keys are never stored permanently, only used for the current session
+- Consider adding rate limiting if deploying to production
+- Consider implementing proper authentication for a production deployment

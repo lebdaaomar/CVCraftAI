@@ -528,13 +528,23 @@ app.post('/api/generate-pdf', async (req, res) => {
   }
 });
 
-// Serve static files from dist for the frontend
-app.use(express.static(path.join(__dirname, '../dist')));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Serve static files from dist for the frontend (or from public for Vercel)
+const staticPath = process.env.VERCEL 
+  ? path.join(__dirname, '../public') 
+  : path.join(__dirname, '../dist');
+app.use(express.static(staticPath));
+
+// Serve uploads - adapt for Vercel environment
+if (!process.env.VERCEL) {
+  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+}
 
 // For any other routes, serve the index.html file
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+  const indexPath = process.env.VERCEL 
+    ? path.join(__dirname, '../public/index.html')
+    : path.join(__dirname, '../dist/index.html');
+  res.sendFile(indexPath);
 });
 
 // Handle errors
